@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Aplikasi Pencatatan Keuangan</title>
+
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        /* --- STYLES (mengikuti style dasar Anda, dengan sedikit perbaikan) --- */
+        * { margin:0; padding:0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg,#667eea 0%,#764ba2 100%);
+            min-height: 100vh;
+            color:#222;
+        }
+        .container { max-width:1200px; margin: 20px auto; padding: 20px; }
+        .header {
+            background: rgba(255,255,255,0.98);
+            border-radius: 18px; padding: 20px; text-align:center;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+        }
+        .header h1 { font-size:2.4rem; margin-bottom:6px; }
+        .header p { color:#666; }
+
+        .nav-tabs {
+            display:flex; gap:10px; align-items:center;
+            background: rgba(255,255,255,0.98);
+            padding:10px; border-radius:18px; margin:18px 0;
+            overflow-x:auto; box-shadow: 0 8px 32px rgba(0,0,0,0.08);
+        }
+        .nav-tab {
+            flex:0 0 auto; min-width:120px; padding:12px 16px; border-radius:12px;
+            background:transparent; border:none; cursor:pointer; font-weight:600; color:#555;
+            transition:all .25s;
+        }
+        .nav-tab.active { background: linear-gradient(135deg,#667eea,#764ba2); color:#fff; transform:translateY(-2px); box-shadow:0 6px 20px rgba(102,126,234,0.28); }
+
+        .content {
+            background: rgba(255,255,255,0.98);
+            padding:22px; border-radius:18px; box-shadow:0 8px 32px rgba(0,0,0,0.08);
+        }
+        .tab-content { display:none; }
+        .tab-content.active { display:block; }
+
+        .dashboard-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:18px; margin-top:12px; }
+        .stat-card {
+            background: linear-gradient(135deg,#667eea,#764ba2);
+            color:#fff; padding:18px; border-radius:12px; text-align:center; box-shadow:0 6px 20px rgba(102,126,234,0.2); transition: transform .25s;
+        }
+        .stat-card h3 { font-size:1rem; opacity:0.95; }
+        .stat-card .amount { font-size:1.6rem; font-weight:700; margin-top:8px; }
+
+        .form-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:16px; margin-bottom:14px; }
+        label { display:block; margin-bottom:6px; font-weight:600; color:#333; }
+        input, select, textarea {
+            width:100%; padding:10px 12px; border-radius:10px; border:2px solid #e6eef8; font-size:1rem;
+        }
+        input:focus, select:focus, textarea:focus { outline:none; border-color:#667eea; box-shadow: 0 0 0 6px rgba(102,126,234,0.06); }
+        .btn { background:linear-gradient(135deg,#667eea,#764ba2); color:#fff; padding:10px 18px; border-radius:10px; border:none; cursor:pointer; font-weight:700; text-transform:uppercase; letter-spacing:.5px; }
+
+        .table-container { overflow-x:auto; margin-top:16px; }
+        table { width:100%; border-collapse:collapse; background:#fff; border-radius:8px; overflow:hidden; box-shadow:0 4px 14px rgba(0,0,0,0.06); }
+        th,td { padding:12px 14px; text-align:left; border-bottom:1px solid #eef3fb; font-size:0.95rem; }
+        th { background: linear-gradient(135deg,#667eea,#764ba2); color:#fff; font-weight:700; text-transform:uppercase; font-size:0.82rem; }
+        tr:hover { background: rgba(102,126,234,0.03); }
+
+        .positive { color:#10b981; font-weight:700; }
+        .negative { color:#ef4444; font-weight:700; }
+
+        .loading { text-align:center; padding:26px; color:#666; }
+        .loading::after { content:''; display:inline-block; width:18px;height:18px;border:2px solid #666;border-radius:50%;border-top-color:transparent; animation:spin 1s linear infinite;margin-left:8px; }
+        @keyframes spin { to { transform:rotate(360deg); } }
+
+        .alert { padding:12px; border-radius:10px; margin-bottom:12px; font-weight:600; }
+        .alert-success { background:#d1fae5; color:#065f46; border:1px solid #a7f3d0; }
+        .alert-error { background:#fee2e2; color:#991b1b; border:1px solid #fecaca; }
+
+        .chart-container { background:#fff; padding:16px; border-radius:12px; margin-top:14px; box-shadow:0 6px 18px rgba(0,0,0,0.05); }
+
+        /* responsive tweaks */
+        @media (max-width:768px) {
+            .container { padding:10px; }
+            .header h1 { font-size:1.6rem; }
+            .nav-tab { padding:8px 10px; font-size:0.9rem; }
+            .form-row { grid-template-columns:1fr; }
+            .dashboard-grid { grid-template-columns:1fr; }
+            th,td { font-size:0.85rem; padding:10px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>💰 Aplikasi Pencatatan Keuangan</h1>
+            <p>Kelola keuangan Anda dengan mudah dan terorganisir</p>
+        </div>
+
+        <div class="nav-tabs" id="navTabs">
+            <button class="nav-tab active" data-tab="dashboard">📊 Dashboard</button>
+            <button class="nav-tab" data-tab="transaksi">💳 Transaksi</button>
+            <button class="nav-tab" data-tab="anggaran">📋 Anggaran</button>
+            <button class="nav-tab" data-tab="utang-piutang">📝 Utang/Piutang</button>
+            <button class="nav-tab" data-tab="tabungan">💎 Tabungan/Investasi</button>
+            <button class="nav-tab" data-tab="laporan">📈 Laporan</button>
+        </div>
+
+        <div class="content">
+            <!-- Dashboard -->
+            <div class="tab-content active" id="dashboard">
+                <h2>📊 Dashboard Keuangan</h2>
+                <div id="dashboard-loading" class="loading">Memuat data dashboard...</div>
+                <div id="dashboard-content" style="display:none;">
+                    <div class="dashboard-grid" id="dashboard-stats"></div>
+
+                    <div class="chart-container">
+                        <h3>Ringkasan Keuangan</h3>
+                        <canvas id="financialChart" width="400" height="180"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Transaksi -->
+            <div class="tab-content" id="transaksi">
+                <h2>💳 Pencatatan Transaksi</h2>
+                <div id="transaksi-alert"></div>
+
+                <form id="transaksi-form">
+                    <div class="form-row">
+                        <div>
+                            <label for="transaksi-tanggal">Tanggal</label>
+                            <input type="date" id="transaksi-tanggal" required>
+                        </div>
+                        <div>
+                            <label for="transaksi-jenis">Jenis</label>
+                            <select id="transaksi-jenis" required>
+                                <option value="">Pilih Jenis</option>
+                                <option value="Pemasukan">Pemasukan</option>
+                                <option value="Pengeluaran">Pengeluaran</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div>
+                            <label for="transaksi-kategori">Kategori</label>
+                            <input type="text" id="transaksi-kategori" placeholder="Gaji, Makanan, Transport" required>
+                        </div>
+                        <div>
+                            <label for="transaksi-jumlah">Jumlah (Rp)</label>
+                            <input type="number" id="transaksi-jumlah" placeholder="0" required>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div style="grid-column:1/-1;">
+                            <label for="transaksi-keterangan">Keterangan</label>
+                            <textarea id="transaksi-keterangan" rows="2" placeholder="Keterangan tambahan (opsional)"></textarea>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn">Simpan Transaksi</button>
+                </form>
+
+                <div class="table-container">
+                    <h3>Riwayat Transaksi</h3>
+                    <div id="transaksi-loading" class="loading">Memuat data transaksi...</div>
+                    <table id="transaksi-table" style="display:none;">
+                        <thead>
+                            <tr>
+                                <th>Tanggal</th><th>Jenis</th><th>Kategori</th><th>Jumlah</th><th>Keterangan</th>
+                            </tr>
+                        </thead>
+                        <tbody id="transaksi-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Anggaran -->
+            <div class="tab-content" id="anggaran">
+                <h2>📋 Penganggaran</h2>
+                <div id="anggaran-alert"></div>
+
+                <form id="anggaran-form">
+                    <div class="form-row">
+                        <div>
+                            <label for="anggaran-bulan">Bulan</label>
+                            <input type="month" id="anggaran-bulan" required>
+                        </div>
+                        <div>
+                            <label for="anggaran-kategori">Kategori</label>
+                            <input type="text" id="anggaran-kategori" placeholder="Makanan, Transport, Hiburan" required>
+                        </div>
+                        <div>
+                            <label for="anggaran-target">Target Anggaran (Rp)</label>
+                            <input type="number" id="anggaran-target" placeholder="0" required>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn">Tambah Anggaran</button>
+                </form>
+
+                <div class="table-container">
+                    <h3>Daftar Anggaran</h3>
+                    <div id="anggaran-loading" class="loading">Memuat data anggaran...</div>
+                    <table id="anggaran-table" style="display:none;">
+                        <thead>
+                            <tr><th>Bulan</th><th>Kategori</th><th>Target</th><th>Terpakai</th><th>Sisa</th><th>Progress</th></tr>
+                        </thead>
+                        <tbody id="anggaran-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Utang Piutang (placeholder form) -->
+            <div class="tab-content" id="utang-piutang">
+                <h2>📝 Pelacakan Utang dan Piutang</h2>
+                <div id="up-alert"></div>
+                <form id="up-form">
+                    <div class="form-row">
+                        <div>
+                            <label for="up-tanggal">Tanggal</label>
+                            <input type="date" id="up-tanggal" required>
+                        </div>
+                        <div>
+                            <label for="up-nama">Nama</label>
+                            <input type="text" id="up-nama" placeholder="Nama orang / pihak" required>
+                        </div>
+                        <div>
+                            <label for="up-jenis">Jenis</label>
+                            <select id="up-jenis" required>
+                                <option value="">Pilih</option>
+                                <option value="Utang">Utang</option>
+                                <option value="Piutang">Piutang</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div>
+                            <label for="up-amount">Jumlah (Rp)</label>
+                            <input type="number" id="up-amount" required>
+                        </div>
+                        <div style="grid-column:1/-1;">
+                            <label for="up-note">Keterangan</label>
+                            <textarea id="up-note" rows="2"></textarea>
+                        </div>
+                    </div>
+                    <button class="btn" type="submit">Simpan Utang/Piutang</button>
+                </form>
+
+                <div class="table-container" style="margin-top:12px;">
+                    <h3>Daftar Utang / Piutang</h3>
+                    <div id="up-loading" class="loading">Memuat data...</div>
+                    <table id="up-table" style="display:none;">
+                        <thead><tr><th>Tgl</th><th>Nama</th><th>Jenis</th><th>Jumlah</th><th>Keterangan</th></tr></thead>
+                        <tbody id="up-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Tabungan / Investasi (placeholder) -->
+            <div class="tab-content" id="tabungan">
+                <h2>💎 Tabungan & Investasi</h2>
+                <p style="color:#555">Fitur tabungan/investasi sementara menampilkan ringkasan. Anda bisa menghubungkannya ke sheet terpisah melalui Apps Script.</p>
+                <div id="tabungan-loading" class="loading">Memuat data tabungan...</div>
+                <div id="tabungan-content" style="display:none;">
+                    <div class="table-container">
+                        <table id="tabungan-table"><thead><tr><th>Akun</th><th>Saldo</th><th>Keterangan</th></tr></thead><tbody id="tabungan-tbody"></tbody></table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Laporan -->
+            <div class="tab-content" id="laporan">
+                <h2>📈 Laporan</h2>
+                <p style="color:#555">Ekspor dan filter laporan akan mengacu ke data sheet Anda. Untuk sekarang ada fitur ringkasan bulanan.</p>
+                <div id="laporan-loading" class="loading">Menyiapkan laporan...</div>
+                <div id="laporan-content" style="display:none;">
+                    <div id="laporan-body"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    const BASE_API = '/api';
+    /* ====================================================
+       Konfigurasi: Ganti SCRIPT_URL dengan URL Web App Apps Script Anda.
+       Jika tidak diisi, aplikasi akan menggunakan localStorage (untuk testing).
+       Apps Script harus merespon request GET/POST dengan JSON.
+       Contoh parameter GET: ?action=getTransactions
+       Contoh POST body JSON: { action: "addTransaction", data: { tanggal:'2025-09-15', jenis:'Pemasukan', kategori:'Gaji', jumlah:5000000, keterangan:'' } }
+       ==================================================== */
+    const SCRIPT_URL = ''; // <-- isi dengan URL web app Apps Script Anda, contoh: 'https://script.google.com/macros/s/XXX/exec'
+
+    // Helper kecil
+    const $ = (sel) => document.querySelector(sel);
+    const $$ = (sel) => Array.from(document.querySelectorAll(sel));
+
+    function formatRp(n) {
+        if (n === null || n === undefined || isNaN(Number(n))) return 'Rp 0';
+        return 'Rp ' + Number(n).toLocaleString('id-ID');
+    }
+
+    // Helper API untuk server express
+async function apiGet(action) {
+    // map action -> endpoint
+    try {
+        if (!BASE_API) {
+            // fallback ke localStorage jika tidak ada server
+            const db = JSON.parse(localStorage.getItem('appkeu_db') || '{}');
+            return { success:true, data: db[action] || [] };
+        }
+        // map action names used in frontend to routes:
+        const map = {
+            'getTransactions': '/api/transaksi',
+            'getAnggaran': '/api/anggaran',
+            'getUP': '/api/utang-piutang',
+            'getTabungan': '/api/tabungan-investasi'
+        };
+        const endpoint = map[action] || action;
+        const res = await fetch(endpoint, { method: 'GET' });
+        const data = await res.json();
+        return { success: true, data };
+    } catch (err) {
+        return { success: false, message: err.message };
+    }
+}
+
+async function apiPost(action, payload) {
+    try {
+        if (!BASE_API) {
+            const db = JSON.parse(localStorage.getItem('appkeu_db') || '{}');
+            db[action] = db[action] || [];
+            db[action].push(payload);
+            localStorage.setItem('appkeu_db', JSON.stringify(db));
+            return { success:true, data: payload };
+        }
+        const map = {
+            'addTransaction': '/api/transaksi',
+            'addAnggaran': '/api/anggaran',
+            'addUP': '/api/utang-piutang',
+            'addTabungan': '/api/tabungan-investasi'
+        };
+        const endpoint = map[action] || action;
+        const res = await fetch(endpoint, {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        // server returns { message: ... } on success — keep unified response
+        return { success: true, data };
+    } catch (err) {
+        return { success: false, message: err.message };
+    }
+}
+
+    /* ----------------- NAVIGATION ------------------ */
+    $$('#navTabs .nav-tab').forEach(btn=>{
+        btn.addEventListener('click', () => {
+            $$('#navTabs .nav-tab').forEach(b=>b.classList.remove('active'));
+            btn.classList.add('active');
+            const tab = btn.dataset.tab;
+            $$('.tab-content').forEach(tc => tc.classList.remove('active'));
+            $(`#${tab}`).classList.add('active');
+            // trigger load for selected tab
+            if (tab === 'dashboard') loadDashboard();
+            if (tab === 'transaksi') loadTransaksi();
+            if (tab === 'anggaran') loadAnggaran();
+            if (tab === 'utang-piutang') loadUP();
+            if (tab === 'tabungan') loadTabungan();
+            if (tab === 'laporan') loadLaporan();
+        });
+    });
+
+    /* ----------------- DASHBOARD ------------------ */
+    let chartInstance = null;
+    async function loadDashboard() {
+        $('#dashboard-content').style.display = 'none';
+        $('#dashboard-loading').style.display = 'block';
+        try {
+            const txRes = await apiGet('getTransactions'); // expects array of transactions
+            const budgetsRes = await apiGet('getAnggaran');
+            const upRes = await apiGet('getUP');
+            // When using Apps Script, your script should return arrays in these action names.
+            const transactions = txRes.success ? txRes.data : [];
+            const budgets = budgetsRes.success ? budgetsRes.data : [];
+            const ups = upRes.success ? upRes.data : [];
+
+            // compute stats
+            let totalIn = 0, totalOut = 0;
+            const byMonth = {};
+            transactions.forEach(t=>{
+                const amt = Number(t.jumlah||0);
+                if (t.jenis === 'Pemasukan') totalIn += amt;
+                else totalOut += amt;
+                const m = (t.tanggal||'').slice(0,7) || 'unknown';
+                byMonth[m] = (byMonth[m] || 0) + (t.jenis === 'Pemasukan' ? amt : -amt);
+            });
+
+            // render stat cards
+            const stats = [
+                { title:'Total Pemasukan', value: formatRp(totalIn) },
+                { title:'Total Pengeluaran', value: formatRp(totalOut) },
+                { title:'Saldo Sekarang', value: formatRp(totalIn - totalOut) },
+                { title:'Utang/Piutang (total)', value: formatRp(ups.reduce((s,u)=>s+(u.jumlah||0),0)) }
+            ];
+            const container = $('#dashboard-stats');
+            container.innerHTML = '';
+            stats.forEach(s => {
+                const div = document.createElement('div'); div.className='stat-card';
+                div.innerHTML = `<h3>${s.title}</h3><div class="amount">${s.value}</div>`;
+                container.appendChild(div);
+            });
+
+            // chart
+            const labels = Object.keys(byMonth).sort();
+            const data = labels.map(l => byMonth[l]);
+            const ctx = document.getElementById('financialChart').getContext('2d');
+            if (chartInstance) chartInstance.destroy();
+            chartInstance = new Chart(ctx, {
+                type:'bar',
+                data: {
+                    labels,
+                    datasets: [{ label:'Nett per bulan', data, tension:0.3 }]
+                },
+                options: { responsive:true, plugins:{legend:{display:false}} }
+            });
+
+            $('#dashboard-loading').style.display = 'none';
+            $('#dashboard-content').style.display = 'block';
+        } catch (err) {
+            $('#dashboard-loading').innerText = 'Gagal memuat dashboard. ' + (err.message||'');
+            console.error(err);
+        }
+    }
+
+    /* ----------------- TRANSAKSI ------------------ */
+    async function loadTransaksi() {
+        $('#transaksi-loading').style.display = 'block';
+        $('#transaksi-table').style.display = 'none';
+        try {
+            const res = await apiGet('getTransactions');
+            const data = res.success ? res.data : [];
+            const tbody = $('#transaksi-tbody');
+            tbody.innerHTML = '';
+            // sort desc by tanggal
+            data.sort((a,b)=> (b.tanggal||'').localeCompare(a.tanggal||''));
+            data.forEach(r=>{
+                const tr = document.createElement('tr');
+                tr.innerHTML = `<td>${r.tanggal||''}</td>
+                                <td>${r.jenis||''}</td>
+                                <td>${r.kategori||''}</td>
+                                <td class="${r.jenis==='Pemasukan'?'positive':'negative'}">${formatRp(r.jumlah)}</td>
+                                <td>${r.keterangan||''}</td>`;
+                tbody.appendChild(tr);
+            });
+            $('#transaksi-loading').style.display = data.length ? 'none' : 'none';
+            $('#transaksi-table').style.display = data.length ? 'table' : 'table';
+        } catch (err) {
+            $('#transaksi-loading').innerText = 'Gagal memuat transaksi: ' + err.message;
+            console.error(err);
+        }
+    }
+
+    $('#transaksi-form').addEventListener('submit', async (e)=>{
+        e.preventDefault();
+        const tanggal = $('#transaksi-tanggal').value;
+        const jenis = $('#transaksi-jenis').value;
+        const kategori = $('#transaksi-kategori').value.trim();
+        const jumlah = Number($('#transaksi-jumlah').value || 0);
+        const keterangan = $('#transaksi-keterangan').value.trim();
+
+        if (!tanggal || !jenis || !kategori || !jumlah) {
+            showAlert('#transaksi-alert','Isi semua field yang wajib','error'); return;
+        }
+
+        const payload = { tanggal, jenis, kategori, jumlah, keterangan };
+        try {
+            const res = await apiPost('addTransaction', payload);
+            if (res.success) {
+                showAlert('#transaksi-alert','Berhasil menambah transaksi','success');
+                $('#transaksi-form').reset();
+                loadTransaksi();
+                loadDashboard();
+            } else {
+                throw new Error(res.message || 'Gagal menyimpan');
+            }
+        } catch (err) {
+            showAlert('#transaksi-alert','Gagal menyimpan transaksi: '+err.message,'error');
+            console.error(err);
+        }
+    });
+
+    /* ----------------- ANGGARAN ------------------ */
+    async function loadAnggaran() {
+        $('#anggaran-loading').style.display = 'block';
+        $('#anggaran-table').style.display = 'none';
+        try {
+            const res = await apiGet('getAnggaran');
+            const data = res.success ? res.data : [];
+            const tbody = $('#anggaran-tbody');
+            tbody.innerHTML = '';
+            data.forEach(r=>{
+                // r = { bulan:'2025-09', kategori:'Makanan', target:1000000, terpakai:200000 }
+                const sisa = (Number(r.target||0) - Number(r.terpakai||0));
+                const progress = r.target ? Math.round((Number(r.terpakai||0)/Number(r.target||1))*100) : 0;
+                const tr = document.createElement('tr');
+                tr.innerHTML = `<td>${r.bulan||''}</td>
+                                <td>${r.kategori||''}</td>
+                                <td>${formatRp(r.target)}</td>
+                                <td>${formatRp(r.terpakai||0)}</td>
+                                <td>${formatRp(sisa)}</td>
+                                <td>${progress}%</td>`;
+                tbody.appendChild(tr);
+            });
+            $('#anggaran-loading').style.display = 'none';
+            $('#anggaran-table').style.display = data.length ? 'table' : 'table';
+        } catch (err) {
+            $('#anggaran-loading').innerText = 'Gagal memuat anggaran: '+err.message;
+            console.error(err);
+        }
+    }
+
+    $('#anggaran-form').addEventListener('submit', async (e)=>{
+        e.preventDefault();
+        const bulan = $('#anggaran-bulan').value;
+        const kategori = $('#anggaran-kategori').value.trim();
+        const target = Number($('#anggaran-target').value || 0);
+        if (!bulan || !kategori || !target) {
+            showAlert('#anggaran-alert','Isi field yang wajib','error'); return;
+        }
+        const payload = { bulan, kategori, target, terpakai:0 };
+        try {
+            const res = await apiPost('addAnggaran', payload);
+            if (res.success) {
+                showAlert('#anggaran-alert','Anggaran berhasil ditambahkan','success');
+                $('#anggaran-form').reset();
+                loadAnggaran();
+            } else throw new Error(res.message || 'Gagal menyimpan');
+        } catch (err) {
+            showAlert('#anggaran-alert','Gagal menyimpan anggaran: '+err.message,'error');
+            console.error(err);
+        }
+    });
+
+    /* ----------------- UTANG / PIUTANG ------------------ */
+    async function loadUP() {
+        $('#up-loading').style.display = 'block';
+        $('#up-table').style.display = 'none';
+        try {
+            const res = await apiGet('getUP');
+            const data = res.success ? res.data : [];
+            const tbody = $('#up-tbody'); tbody.innerHTML='';
+            data.forEach(u=>{
+                const tr = document.createElement('tr');
+                tr.innerHTML = `<td>${u.tanggal||''}</td><td>${u.nama||''}</td><td>${u.jenis||''}</td><td>${formatRp(u.jumlah)}</td><td>${u.keterangan||''}</td>`;
+                tbody.appendChild(tr);
+            });
+            $('#up-loading').style.display = 'none';
+            $('#up-table').style.display = 'table';
+        } catch (err) {
+            $('#up-loading').innerText = 'Gagal memuat data: '+err.message;
+            console.error(err);
+        }
+    }
+
+    $('#up-form').addEventListener('submit', async (e)=>{
+        e.preventDefault();
+        const tanggal = $('#up-tanggal').value;
+        const nama = $('#up-nama').value.trim();
+        const jenis = $('#up-jenis').value;
+        const jumlah = Number($('#up-amount').value || 0);
+        const keterangan = $('#up-note').value.trim();
+        if (!tanggal || !nama || !jenis || !jumlah) { showAlert('#up-alert','Lengkapi field wajib','error'); return; }
+        const payload = { tanggal, nama, jenis, jumlah, keterangan };
+        try {
+            const res = await apiPost('addUP', payload);
+            if (res.success) {
+                showAlert('#up-alert','Berhasil menyimpan utang/piutang','success');
+                $('#up-form').reset();
+                loadUP();
+            } else throw new Error(res.message || 'Gagal menyimpan');
+        } catch (err) {
+            showAlert('#up-alert','Gagal: '+err.message,'error');
+            console.error(err);
+        }
+    });
+
+    /* ----------------- TABUNGAN (placeholder) ------------------ */
+    async function loadTabungan() {
+        $('#tabungan-loading').style.display = 'block';
+        $('#tabungan-content').style.display = 'none';
+        try {
+            const res = await apiGet('getTabungan');
+            const data = res.success ? res.data : [];
+            const tbody = $('#tabungan-tbody'); tbody.innerHTML='';
+            if (data.length === 0) {
+                // buat sample jika kosong
+                data.push({ akun:'Tabungan BRI', saldo:1500000, keterangan:'' });
+                data.push({ akun:'Deposito', saldo:5000000, keterangan:'Jangka 6 bulan' });
+            }
+            data.forEach(t=>{
+                const tr = document.createElement('tr');
+                tr.innerHTML = `<td>${t.akun||''}</td><td>${formatRp(t.saldo)}</td><td>${t.keterangan||''}</td>`;
+                tbody.appendChild(tr);
+            });
+            $('#tabungan-loading').style.display = 'none';
+            $('#tabungan-content').style.display = 'block';
+        } catch (err) {
+            $('#tabungan-loading').innerText = 'Gagal memuat tabungan: '+err.message;
+            console.error(err);
+        }
+    }
+
+    /* ----------------- LAPORAN (placeholder) ------------------ */
+    async function loadLaporan() {
+        $('#laporan-loading').style.display = 'block';
+        $('#laporan-content').style.display = 'none';
+        try {
+            // contoh ringkasan bulanan
+            const txRes = await apiGet('getTransactions');
+            const tx = txRes.success ? txRes.data : [];
+            const byMonth = {};
+            tx.forEach(t=>{ const m=(t.tanggal||'').slice(0,7)||'unknown'; byMonth[m]=(byMonth[m]||0)+ (t.jenis==='Pemasukan'? Number(t.jumlah||0): -Number(t.jumlah||0)); });
+            const keys = Object.keys(byMonth).sort();
+            let html = '<h3>Ringkasan Bulanan</h3><table style="width:100%; border-collapse:collapse;"><thead><tr style="background:#f6f9ff;"><th style="padding:10px">Bulan</th><th style="padding:10px">Nett</th></tr></thead><tbody>';
+            keys.forEach(k=> html += `<tr><td style="padding:10px">${k}</td><td style="padding:10px">${formatRp(byMonth[k])}</td></tr>`);
+            html += '</tbody></table>';
+            $('#laporan-body').innerHTML = html;
+            $('#laporan-loading').style.display = 'none';
+            $('#laporan-content').style.display = 'block';
+        } catch (err) {
+            $('#laporan-loading').innerText = 'Gagal membuat laporan: '+err.message;
+            console.error(err);
+        }
+    }
+
+    /* ----------------- UTIL ------------------ */
+    function showAlert(selector, text, type='success') {
+        const el = document.querySelector(selector);
+        if (!el) return;
+        el.innerHTML = `<div class="alert ${type==='success'?'alert-success':'alert-error'}">${text}</div>`;
+        setTimeout(()=> { if (el) el.innerHTML = '' }, 3500);
+    }
+
+    // initial load
+    document.addEventListener('DOMContentLoaded', () => {
+        loadDashboard();
+        // set default date fields to today for UX
+        const today = new Date().toISOString().slice(0,10);
+        $('#transaksi-tanggal').value = today;
+        $('#up-tanggal').value = today;
+        // if you want to auto-load default tab content: already dashboard called
+    });
+    </script>
+</body>
+</html>

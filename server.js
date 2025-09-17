@@ -30,7 +30,7 @@ async function getAuthenticatedDoc() {
   return doc;
 }
 
-// === Inisialisasi sheet (buat tab jika belum ada) ===
+// === Inisialisasi sheet ===
 async function initializeSheets() {
   const doc = await getAuthenticatedDoc();
   const sheetTitles = ['Transaksi', 'Anggaran', 'Utang_Piutang', 'Tabungan_Investasi'];
@@ -62,7 +62,7 @@ app.get('/api/transaksi', async (req, res) => {
       tanggal: r.Tanggal,
       jenis: r.Jenis,
       kategori: r.Kategori,
-      jumlah: r.Jumlah,
+      jumlah: Number(r.Jumlah) || 0,
       keterangan: r.Keterangan
     }));
     res.json(data);
@@ -88,9 +88,9 @@ app.get('/api/anggaran', async (req, res) => {
     const data = rows.map(r => ({
       bulan: r.Bulan,
       kategori: r.Kategori,
-      target: r.Target,
-      terpakai: r.Terpakai,
-      sisa: r.Sisa
+      target: Number(r.Target) || 0,
+      terpakai: Number(r.Terpakai) || 0,
+      sisa: Number(r.Sisa) || 0
     }));
     res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -116,7 +116,7 @@ app.get('/api/utang-piutang', async (req, res) => {
       tanggal: r.Tanggal,
       jenis: r.Jenis,
       nama: r.Nama,
-      jumlah: r.Jumlah,
+      jumlah: Number(r.Jumlah) || 0,
       status: r.Status,
       jatuhTempo: r.Jatuh_Tempo
     }));
@@ -144,9 +144,9 @@ app.get('/api/tabungan-investasi', async (req, res) => {
       tanggal: r.Tanggal,
       jenis: r.Jenis,
       nama: r.Nama,
-      jumlah: r.Jumlah,
-      target: r.Target,
-      return: r.Return
+      jumlah: Number(r.Jumlah) || 0,
+      target: Number(r.Target) || 0,
+      return: Number(r.Return) || 0
     }));
     res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -159,6 +159,81 @@ app.post('/api/tabungan-investasi', async (req, res) => {
     const sheet = doc.sheetsByTitle['Tabungan_Investasi'];
     await sheet.addRow({ Tanggal: tanggal, Jenis: jenis, Nama: nama, Jumlah: jumlah, Target: target || 0, Return: 0 });
     res.json({ message: 'Data tabungan/investasi berhasil disimpan' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// --- Dashboard ---
+app.get('/api/dashboard', async (req, res) => {
+  try {
+    const doc = await getAuthenticatedDoc();
+    
+    // Transaksi
+    const transaksiRows = await doc.sheetsByTitle['Transaksi'].getRows();
+    let pemasukan = 0, pengeluaran = 0;
+    transaksiRows.forEach(r => {
+      if (r.Jenis === 'Pemasukan') pemasukan += Number(r.Jumlah) || 0;
+      if (r.Jenis === 'Pengeluaran') pengeluaran += Number(r.Jumlah) || 0;
+    });
+
+    // Utang Piutang
+    const utangRows = await doc.sheetsByTitle['Utang_Piutang'].getRows();
+    let totalUtang = 0, totalPiutang = 0;
+    utangRows.forEach(r => {
+      if (r.Jenis === 'Utang' && r.Status !== 'Lunas') totalUtang += Number(r.Jumlah) || 0;
+      if (r.Jenis === 'Piutang' && r.Status !== 'Lunas') totalPiutang += Number(r.Jumlah) || 0;
+    });
+
+    // Tabungan & Investasi
+    const tabunganRows = await doc.sheetsByTitle['Tabungan_Investasi'].getRows();
+    let totalTabungan = 0, totalInvestasi = 0;
+    tabunganRows.forEach(r => {
+      if (r.Jenis === 'Tabungan') totalTabungan += Number(r.Jumlah) || 0;
+      if (r.Jenis === 'Investasi') totalInvestasi += Number(r.Jumlah) || 0;
+    });
+
+    res.json({
+      pemasukan, pengeluaran,
+      saldo: pemasukan - pengeluaran,
+      utang: totalUtang,
+      piutang: totalPiutang,
+      tabungan: totalTabungan,
+      investasi: totalInvestasi
+    });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// --- Laporan Bulanan ---
+app.get('/api/laporan/bulanan/:tahun/:bulan', async (req, res) => {
+  try {
+    const { tahun, bulan } = req.params;
+    const doc = await getAuthenticatedDoc();
+    const sheet = doc.sheetsByTitle['Transaksi'];
+    const rows = await sheet.getRows();
+
+    const transaksi = rows.filter(r => {
+      if (!r.Tanggal) return false;
+      const d = new Date(r.Tanggal);
+      return d.getFullYear() === Number(tahun) && (d.getMonth() + 1) === Number(bulan);
+    });
+
+    let pemasukan = 0, pengeluaran = 0;
+    const kategoriPengeluaran = {};
+    transaksi.forEach(r => {
+      const jumlah = Number(r.Jumlah) || 0;
+      if (r.Jenis === 'Pemasukan') pemasukan += jumlah;
+      if (r.Jenis === 'Pengeluaran') {
+        pengeluaran += jumlah;
+        kategoriPengeluaran[r.Kategori] = (kategoriPengeluaran[r.Kategori] || 0) + jumlah;
+      }
+    });
+
+    res.json({
+      bulan: `${tahun}-${bulan}`,
+      pemasukan,
+      pengeluaran,
+      saldo: pemasukan - pengeluaran,
+      rincianPengeluaran: kategoriPengeluaran
+    });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
